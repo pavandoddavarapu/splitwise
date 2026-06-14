@@ -1,15 +1,15 @@
 # PROGRESS.md
 
 Tracks build state across sessions. Read this before writing any code in a new session.
-See brief Section 0 for the full session-continuity protocol.
+See brief Section-0 for the full session-continuity protocol.
 
 ---
 
 ## Current status
 
-**Last completed step**: Step 3 — Groups + group memberships CRUD
-**Next step**: Step 4 — Manual expense creation (all 4 split types)
-**Awaiting**: Human confirmation to proceed to Step 4
+**Last completed step**: Step 4 — Manual expense creation (all 4 split types)
+**Next step**: Step 5 — Balance calculation (net balances) + drill-down view
+**Awaiting**: Human confirmation to proceed to Step 5
 
 ---
 
@@ -20,7 +20,7 @@ See brief Section 0 for the full session-continuity protocol.
 | 1 | Scaffold Django + Vite + whitenoise + Render deploy | ✅ Complete | `feat: scaffold Django+DRF+Vite, wire whitenoise, add full schema models` |
 | 2 | Auth (login/signup, DRF TokenAuthentication) | ✅ Complete | `feat: auth endpoints register/login/logout/me + React auth UI` |
 | 3 | Groups + group memberships CRUD (with join/leave dates) | ✅ Complete | `feat: groups and memberships CRUD with join/leave dates` |
-| 4 | Manual expense creation (all 4 split types) | ⬜ Not started | — |
+| 4 | Manual expense creation (all 4 split types) | ✅ Complete | `feat: manual expense creation with all 4 split types and date filter` |
 | 5 | Balance calculation (net balances) + drill-down view | ⬜ Not started | — |
 | 6 | Settlement recording | ⬜ Not started | — |
 | 7 | CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11) | ⬜ Not started | — |
@@ -28,6 +28,25 @@ See brief Section 0 for the full session-continuity protocol.
 | 9 | End-to-end import of real CSV, verify balances, fix issues | ⬜ Not started | — |
 | 10 | UI polish + finalize deployment | ⬜ Not started | — |
 | 11 | Finalize README, SCOPE, DECISIONS, AI_USAGE | ⬜ Not started | — |
+
+---
+
+## Step 4 — What was built
+
+### Backend Expense Creation & Splits
+- Created Expense serialization and view endpoints (`GET/POST /api/expenses/`, `GET/PUT/PATCH/DELETE /api/expenses/<id>/`) supporting filtering by `group`.
+- Implemented core mathematical allocation function using the Largest Remainder Method (Hare-Niemeyer) to handle split rounding residues deterministically.
+- Enforced that only members active on the expense date (`GroupMembership.covers_date`) are allowed in splits.
+- Automatically handles USD currency conversions at the fixed rate of ₹83.50.
+- Formats `share_raw` dynamically based on split types (`equal`, `percentage`, `exact`, `share`).
+- Added 7 new unit tests in `expenses/tests.py` verifying each split algorithm and date boundaries, bringing the total suite to 14 tests.
+
+### Frontend Expense Forms
+- Created [ExpensesTab.jsx](file:///c:/Users/pavan/OneDrive/Desktop/spreetail/frontend/src/pages/ExpensesTab.jsx) to display a system-wide view of all expenses with expandable drill-down components.
+- Integrated group-specific expense listings and a "+ Add Expense" creation modal in [GroupsTab.jsx](file:///c:/Users/pavan/OneDrive/Desktop/spreetail/frontend/src/pages/GroupsTab.jsx).
+- Implemented real-time client-side date boundary filtering. When the expense date changes in the date-picker, the active group members list updates immediately.
+- Added live target validation checking (percentage sums to 100%, exact sum matches expense amount).
+- Enabled sidebar link for "Expenses" in [DashboardPage.jsx](file:///c:/Users/pavan/OneDrive/Desktop/spreetail/frontend/src/pages/DashboardPage.jsx).
 
 ---
 
@@ -67,13 +86,13 @@ See brief Section 0 for the full session-continuity protocol.
 - `vite.config.js` sets `outDir: '../backend/staticfiles_src'` (see note below)
 
 ### Documentation
-- `DECISIONS.md` — D-001 through D-007 populated
+- `DECISIONS.md` — D-001 through D-008 populated
 - `PROGRESS.md` (this file) — updated
 - `SCOPE.md` — stub created, to be filled with anomaly catalog as steps 7–9 complete
 - `AI_USAGE.md` — stub created
 
 ### Deviations from brief
-- None for Step 3.
+- None for Step 4.
 
 ---
 

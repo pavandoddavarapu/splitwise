@@ -128,3 +128,15 @@ storing derived data.
 
 **Rationale**: Storing the token in `localStorage` allows easy client-side storage, request headers integration, and auth rehydration without setting up cross-site cookies, CORS, or a cookie proxy. However, `localStorage` is susceptible to cross-site scripting (XSS) attacks. In a production environment, securing tokens in an `httpOnly`, `secure`, and `SameSite=Strict` cookie is preferred to mitigate this threat. For the current scope of the application, this trade-off is accepted for simplicity.
 
+---
+
+## D-008 — Rounding Residue Allocation via Largest Remainder Method
+
+**Date**: 2026-06-15
+**Step**: 4 (manual expense creation)
+
+**Decision**: Resolve mathematical rounding residue (e.g. splitting ₹835.00 among 3 people equally) using the Largest Remainder Method (Hare-Niemeyer) sorted in descending order of fractional remainders and ascending order of user ID as a deterministic tie-breaker.
+
+**Rationale**: When splitting amounts with fractions (like $10.00 / 3 = $3.33 each with a remaining $0.01) or when converting split values from USD to INR, individual shares when rounded to 2 decimal places can sum to an amount different from the total. If we do not resolve this, the sum of all `ExpenseShare` rows would not equal the expense's `amount_inr`, breaking total auditability. Using the Largest Remainder Method allocates the leftover cents to the users with the highest rounding remainder. If there is a tie, sorting by user ID ensures determinism. This guarantees that the sum of `ExpenseShare` amounts always matches the total expense amount down to the last paisa.
+
+

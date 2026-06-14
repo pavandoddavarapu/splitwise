@@ -2,13 +2,14 @@
  * DashboardPage — shown to authenticated users.
  *
  * Proves the full auth flow end-to-end and provides tabbed navigation.
- * Step 3: Adds Groups & GroupMembership CRUD tab.
+ * Step 4: Adds Expenses listing tab.
  */
 
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../api/client";
 import GroupsTab from "./GroupsTab";
+import ExpensesTab from "./ExpensesTab";
 
 function StatusBadge({ status }) {
   if (status === "checking")
@@ -26,7 +27,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     // Hit /api/health/ — the Authorization header is attached automatically
-    // by the api client (token from localStorage).
+    // by the api client.
     api
       .get("/health/")
       .then((d) => setHealthStatus(d?.status ?? "ok"))
@@ -68,7 +69,16 @@ export default function DashboardPage() {
           >
             Groups
           </a>
-          <a href="#" className="nav-item nav-item--disabled">Expenses</a>
+          <a
+            href="#"
+            className={`nav-item ${activeTab === "expenses" ? "nav-item--active" : ""}`}
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab("expenses");
+            }}
+          >
+            Expenses
+          </a>
           <a href="#" className="nav-item nav-item--disabled">Settlements</a>
           <a href="#" className="nav-item nav-item--disabled">Import CSV</a>
         </nav>
@@ -88,7 +98,7 @@ export default function DashboardPage() {
 
       {/* Main content */}
       <main className="dash-main">
-        {activeTab === "groups" ? (
+        {activeTab === "groups" && (
           <>
             <header className="dash-header">
               <div>
@@ -98,12 +108,26 @@ export default function DashboardPage() {
             </header>
             <GroupsTab />
           </>
-        ) : (
+        )}
+
+        {activeTab === "expenses" && (
+          <>
+            <header className="dash-header">
+              <div>
+                <h1 className="dash-title">Expenses 💸</h1>
+                <p className="dash-subtitle">List and drill-down into shared expense breakdowns</p>
+              </div>
+            </header>
+            <ExpensesTab />
+          </>
+        )}
+
+        {activeTab === "dashboard" && (
           <>
             <header className="dash-header">
               <div>
                 <h1 className="dash-title">Welcome back, {user?.name?.split(" ")[0]} 👋</h1>
-                <p className="dash-subtitle">Step 3 — Groups & memberships active</p>
+                <p className="dash-subtitle">Step 4 — Manual expense splits active</p>
               </div>
             </header>
 
@@ -173,12 +197,22 @@ export default function DashboardPage() {
                 <p className="card-desc">
                   Jump directly to different parts of the application or configure settings.
                 </p>
-                <button
-                  className="btn-primary"
-                  onClick={() => setActiveTab("groups")}
-                >
-                  Manage Groups
-                </button>
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button
+                    className="btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={() => setActiveTab("groups")}
+                  >
+                    Manage Groups
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    style={{ flex: 1 }}
+                    onClick={() => setActiveTab("expenses")}
+                  >
+                    View Expenses
+                  </button>
+                </div>
               </div>
             </div>
           </>
