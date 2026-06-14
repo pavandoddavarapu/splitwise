@@ -24,6 +24,13 @@ SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-fallback-key-for-builds")
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+render_host = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if render_host:
+    ALLOWED_HOSTS.append(render_host)
+if ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
+# Strip whitespace from hostnames
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS if host.strip()]
 
 # ── Application definition ────────────────────────────────────────────────────
 INSTALLED_APPS = [
