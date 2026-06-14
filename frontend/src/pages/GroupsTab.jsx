@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 export default function GroupsTab() {
   const { user: currentUser } = useAuth();
-  
+
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -16,11 +16,19 @@ export default function GroupsTab() {
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [expandedExpenseId, setExpandedExpenseId] = useState(null);
 
+  // Balance & Settlement states
+  const [balancesData, setBalancesData] = useState(null);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [selectedDrilldownUser, setSelectedDrilldownUser] = useState(null);
+  const [drilldownData, setDrilldownData] = useState(null);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showEditMemberModal, setShowEditMemberModal] = useState(null);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [showSettleModal, setShowSettleModal] = useState(false);
 
   // Form states (Group & Members)
   const [newGroupName, setNewGroupName] = useState("");
@@ -37,6 +45,13 @@ export default function GroupsTab() {
   const [splitType, setSplitType] = useState("equal");
   const [splitValues, setSplitValues] = useState({}); // { [userId]: value }
   const [notes, setNotes] = useState("");
+
+  // Form states (Settlement)
+  const [settleSender, setSettleSender] = useState("");
+  const [settleRecipient, setSettleRecipient] = useState("");
+  const [settleAmount, setSettleAmount] = useState("");
+  const [settleDate, setSettleDate] = useState(new Date().toISOString().split("T")[0]);
+  const [settleNotes, setSettleNotes] = useState("");
 
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -78,12 +93,38 @@ export default function GroupsTab() {
     }
   };
 
+  // Fetch group balances (and simplified settlements)
+  const fetchGroupBalances = async (groupId) => {
+    try {
+      setBalancesLoading(true);
+      const data = await api.get(`/expenses/groups/${groupId}/balances/`);
+      setBalancesData(data || null);
+    } catch (err) {
+      console.error("Failed to load group balances", err);
+    } finally {
+      setBalancesLoading(false);
+    }
+  };
+
+  // Fetch drill-down details for a specific member
+  const fetchUserDrilldown = async (userId, groupId) => {
+    try {
+      setDrilldownLoading(true);
+      const data = await api.get(`/expenses/users/${userId}/balance-detail/?group=${groupId}`);
+      setDrilldownData(data || null);
+    } catch (err) {
+      console.error("Failed to load balance drilldown", err);
+    } finally {
+      setDrilldownLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchGroups();
     fetchUsers();
   }, []);
 
-  // Sync selected group details and fetch its expenses
+  // Sync selected group details, balances, and expenses
   useEffect(() => {
     if (selectedGroup) {
       const updated = groups.find((g) => g.id === selectedGroup.id);
@@ -91,10 +132,21 @@ export default function GroupsTab() {
         setSelectedGroup(updated);
       }
       fetchGroupExpenses(selectedGroup.id);
+      fetchGroupBalances(selectedGroup.id);
     } else {
       setGroupExpenses([]);
+      setBalancesData(null);
     }
   }, [selectedGroup, groups]);
+
+  // Trigger drill-down fetch
+  useEffect(() => {
+    if (selectedDrilldownUser && selectedGroup) {
+      fetchUserDrilldown(selectedDrilldownUser.id, selectedGroup.id);
+    } else {
+      setDrilldownData(null);
+    }
+  }, [selectedDrilldownUser, selectedGroup]);
 
   // Create Group
   const handleCreateGroup = async (e) => {
@@ -197,7 +249,7 @@ export default function GroupsTab() {
     }
   };
 
-  // Helper: Get active members on the selected date (client-side date check)
+  // Helper: Get active members on date
   const getActiveMembersOnDate = (dateStr) => {
     if (!selectedGroup || !dateStr) return [];
     const targetDate = new Date(dateStr);
@@ -228,7 +280,6 @@ export default function GroupsTab() {
       return;
     }
 
-    // Client-side sum validation before sending to API
     const amountVal = parseFloat(originalAmount);
     if (isNaN(amountVal) || amountVal <= 0) {
       setFormError("Expense amount must be a positive number.");
@@ -251,7 +302,7 @@ export default function GroupsTab() {
       }
 
       if (splitType === "percentage" && Math.abs(sum - 100) > 0.01) {
-        setFormError(`The sum of percentages must equal 100% (currently ${sum.toFixed(2)}%).`);
+        setFormError(`The sum of percentages must equal 100% (currently {sum.toFixed(2)}%).`);
         setSubmitting(false);
         return;
       }
@@ -276,7 +327,6 @@ export default function GroupsTab() {
         splits: splitsPayload,
       });
 
-      // Reset form
       setDescription("");
       setExpenseDate(new Date().toISOString().split("T")[0]);
       setOriginalAmount("");
@@ -286,8 +336,9 @@ export default function GroupsTab() {
       setNotes("");
       setShowAddExpenseModal(false);
 
-      // Refresh list
+      // Refresh list & balances
       await fetchGroupExpenses(selectedGroup.id);
+      await fetchGroupBalances(selectedGroup.id);
     } catch (err) {
       if (err?.splits) {
         setFormError(err.splits[0]);
@@ -303,25 +354,82 @@ export default function GroupsTab() {
     }
   };
 
-  // Helper: calculate live split sum in modal
+  // Settle Up
+  const handleRecordSettlement = async (e) => {
+    e.preventDefault();
+    if (!settleSender || !settleRecipient) {
+      setFormError("Please select both sender and recipient.");
+      return;
+    }
+    if (settleSender === settleRecipient) {
+      setFormError("Sender and recipient must be different flatmates.");
+      return;
+    }
+
+    const amt = parseFloat(settleAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setFormError("Amount must be a positive value.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError("");
+    try {
+      await api.post("/expenses/settlements/", {
+        group: selectedGroup.id,
+        paid_by: parseInt(settleSender, 10),
+        paid_to: parseInt(settleRecipient, 10),
+        amount_inr: amt,
+        settled_at: new Date(settleDate).toISOString(),
+        notes: settleNotes,
+      });
+
+      setSettleSender("");
+      setSettleRecipient("");
+      setSettleAmount("");
+      setSettleNotes("");
+      setShowSettleModal(false);
+
+      // Reload
+      await fetchGroupExpenses(selectedGroup.id);
+      await fetchGroupBalances(selectedGroup.id);
+    } catch (err) {
+      if (err?.paid_by) {
+        setFormError(err.paid_by[0]);
+      } else if (err?.paid_to) {
+        setFormError(err.paid_to[0]);
+      } else if (err?.non_field_errors) {
+        setFormError(err.non_field_errors[0]);
+      } else {
+        setFormError("Failed to record payment. Verify inputs.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Helper: trigger settle modal from suggestion
+  const handleSettleSuggestion = (fromId, toId, amount) => {
+    setFormError("");
+    setSettleSender(fromId);
+    setSettleRecipient(toId);
+    setSettleAmount(parseFloat(amount).toFixed(2));
+    setSettleDate(new Date().toISOString().split("T")[0]);
+    setSettleNotes("Greedy settlement simplification");
+    setShowSettleModal(true);
+  };
+
   const getLiveSplitSum = () => {
     const activeMembers = getActiveMembersOnDate(expenseDate);
     return activeMembers.reduce((acc, m) => acc + parseFloat(splitValues[m.user.id] || 0), 0);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "Present";
+  const formatDateLabel = (dateString) => {
     return new Date(dateString).toLocaleDateString("en-IN", {
       day: "numeric",
       month: "short",
       year: "numeric",
     });
-  };
-
-  const getAvailableUsers = () => {
-    if (!selectedGroup) return users;
-    const memberIds = selectedGroup.memberships.map((m) => m.user.id);
-    return users.filter((u) => !memberIds.includes(u.id));
   };
 
   if (loading && groups.length === 0) {
@@ -356,6 +464,20 @@ export default function GroupsTab() {
               + Add Member
             </button>
             <button
+              className="btn-secondary"
+              onClick={() => {
+                setFormError("");
+                setSettleSender("");
+                setSettleRecipient("");
+                setSettleAmount("");
+                setSettleDate(new Date().toISOString().split("T")[0]);
+                setSettleNotes("");
+                setShowSettleModal(true);
+              }}
+            >
+              🤝 Settle Up
+            </button>
+            <button
               className="btn-primary"
               style={{ width: "auto" }}
               onClick={() => {
@@ -376,73 +498,160 @@ export default function GroupsTab() {
           </div>
         </div>
 
-        {/* Group Meta Card */}
-        <div className="card" style={{ marginBottom: "2rem" }}>
+        {/* Group Meta & Timeline Card */}
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
           <div className="card-header">
             <span className="card-icon">👥</span>
             <h2 className="card-title">{selectedGroup.name}</h2>
           </div>
           <p className="card-desc">
-            Members are only split into expenses if the expense date falls within their active membership window.
+            timeline check is active: expenses are only split among members whose membership window covers the expense date.
           </p>
 
-          <h3 style={{ fontSize: "1.1rem", fontWeight: "600", marginTop: "1.5rem" }}>
-            Group Members ({selectedGroup.memberships.length})
+          <h3 style={{ fontSize: "1rem", fontWeight: "600", marginTop: "1rem" }}>
+            Timeline Ranges ({selectedGroup.memberships.length} members)
           </h3>
+          <div className="members-list" style={{ marginTop: "0.5rem" }}>
+            {selectedGroup.memberships.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "0.85rem",
+                  background: "rgba(255,255,255,0.02)",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "6px",
+                }}
+              >
+                <strong>{m.user.name}</strong>
+                <span style={{ color: "var(--text-2)" }}>
+                  {formatDateLabel(m.joined_at)} → {m.left_at ? formatDateLabel(m.left_at) : "Present"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-          {selectedGroup.memberships.length === 0 ? (
-            <p style={{ color: "var(--text-3)", marginTop: "1rem", fontSize: "0.9rem" }}>
-              No members in this group yet. Click "Add Member" to add one.
+        {/* Aisha's Greedy simplified settlements card */}
+        {balancesData?.suggested_settlements?.length > 0 && (
+          <div className="card" style={{ marginBottom: "1.5rem", border: "1px solid var(--primary-glow)", background: "rgba(124,58,237,0.03)" }}>
+            <div className="card-header">
+              <span className="card-icon">💡</span>
+              <h2 className="card-title" style={{ color: "#c4b5fd" }}>Simplified Settlements (Greedy Clearing)</h2>
+            </div>
+            <p className="card-desc" style={{ color: "var(--text-2)" }}>
+              Aisha's "one number per person" view. Shows the minimum transfers required to clear all outstanding balances.
             </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+              {balancesData.suggested_settlements.map((s, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "rgba(0,0,0,0.3)",
+                    padding: "0.6rem 1rem",
+                    borderRadius: "8px",
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  <span>
+                    <strong>{s.from_user.name}</strong> owes <strong>{s.to_user.name}</strong>{" "}
+                    <strong style={{ color: "var(--text-1)" }}>₹{s.amount_inr.toFixed(2)}</strong>
+                  </span>
+                  <button
+                    className="coming-soon"
+                    style={{ border: "none", cursor: "pointer", display: "inline-flex", textDecoration: "none" }}
+                    onClick={() => handleSettleSuggestion(s.from_user.id, s.to_user.id, s.amount_inr)}
+                  >
+                    Settle up →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Balances Card */}
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
+          <div className="card-header">
+            <span className="card-icon">📊</span>
+            <h2 className="card-title">Live Balances</h2>
+          </div>
+          <p className="card-desc">
+            Outstanding balance = paid - owed + settled_paid - settled_received. Click a row to see the audit trail.
+          </p>
+
+          {balancesLoading ? (
+            <div className="check-list" style={{ justifyContent: "center", padding: "1rem" }}>
+              <div className="loading-spinner" style={{ margin: "auto" }} />
+            </div>
+          ) : !balancesData?.balances ? (
+            <p>Failed to calculate balances.</p>
           ) : (
-            <div className="members-list">
-              {selectedGroup.memberships.map((membership) => {
-                const isActive =
-                  !membership.left_at ||
-                  new Date(membership.left_at) >= new Date();
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem", textAlign: "left" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-3)" }}>
+                    <th style={{ padding: "0.5rem" }}>Flatmate</th>
+                    <th style={{ padding: "0.5rem", textAlign: "right" }}>Paid</th>
+                    <th style={{ padding: "0.5rem", textAlign: "right" }}>Owed</th>
+                    <th style={{ padding: "0.5rem", textAlign: "right" }}>Settled</th>
+                    <th style={{ padding: "0.5rem", textAlign: "right" }}>Net Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {balancesData.balances.map((b) => {
+                    const isCreditor = b.net_balance > 0.005;
+                    const isDebtor = b.net_balance < -0.005;
+                    const netSettlements = b.settlements_paid - b.settlements_received;
 
-                return (
-                  <div className="member-item" key={membership.id}>
-                    <div className="member-details">
-                      <span className="member-name">
-                        {membership.user.name}{" "}
-                        <span
-                          className={`badge ${isActive ? "badge--ok" : "badge--checking"}`}
-                          style={{ marginLeft: "0.5rem" }}
-                        >
-                          {isActive ? "Active" : "Inactive"}
-                        </span>
-                      </span>
-                      <span className="member-dates">
-                        Joined: {formatDate(membership.joined_at)} • Left:{" "}
-                        {formatDate(membership.left_at)}
-                      </span>
-                    </div>
-
-                    <div className="member-actions">
-                      <button
-                        className="btn-icon"
-                        title="Edit membership dates"
+                    return (
+                      <tr
+                        key={b.user_id}
+                        className="member-item"
+                        style={{
+                          borderBottom: "1px solid var(--border)",
+                          cursor: "pointer",
+                          display: "table-row",
+                          background: "none",
+                        }}
                         onClick={() => {
-                          setFormError("");
-                          setJoinedAt(membership.joined_at);
-                          setLeftAt(membership.left_at || "");
-                          setShowEditMemberModal(membership);
+                          const member = selectedGroup.memberships.find(m => m.user.id === b.user_id)?.user;
+                          if (member) setSelectedDrilldownUser({ ...member, net_balance: b.net_balance });
                         }}
                       >
-                        ✏️
-                      </button>
-                      <button
-                        className="btn-icon btn-icon--danger"
-                        title="Remove member"
-                        onClick={() => handleRemoveMember(membership.id)}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                        <td style={{ padding: "0.75rem 0.5rem" }}>
+                          <strong>{b.user_name}</strong>
+                          <span style={{ display: "block", fontSize: "0.75rem", color: "var(--text-3)" }}>Click to audit 🔍</span>
+                        </td>
+                        <td style={{ padding: "0.75rem 0.5rem", textAlign: "right", color: "var(--text-2)" }}>
+                          ₹{b.expenses_paid.toFixed(2)}
+                        </td>
+                        <td style={{ padding: "0.75rem 0.5rem", textAlign: "right", color: "var(--text-2)" }}>
+                          ₹{b.shares_owed.toFixed(2)}
+                        </td>
+                        <td style={{ padding: "0.75rem 0.5rem", textAlign: "right", color: "var(--text-2)" }}>
+                          {netSettlements >= 0 ? "+" : ""}₹{netSettlements.toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            padding: "0.75rem 0.5rem",
+                            textAlign: "right",
+                            fontWeight: "700",
+                            color: isCreditor ? "var(--success)" : isDebtor ? "var(--error)" : "var(--text-3)",
+                          }}
+                        >
+                          {isCreditor ? "+" : ""}
+                          {b.net_balance.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -451,22 +660,19 @@ export default function GroupsTab() {
         <div className="card">
           <div className="card-header">
             <span className="card-icon">💸</span>
-            <h2 className="card-title">Expenses in this Group</h2>
+            <h2 className="card-title">Expenses & Payments Logs</h2>
           </div>
-          <p className="card-desc">
-            Click an expense to drill down into the detailed split shares.
-          </p>
 
           {expensesLoading ? (
-            <div className="check-list" style={{ justifyContent: "center", padding: "2rem" }}>
+            <div className="check-list" style={{ justifyContent: "center", padding: "1rem" }}>
               <div className="loading-spinner" style={{ margin: "auto" }} />
             </div>
           ) : groupExpenses.length === 0 ? (
-            <p style={{ color: "var(--text-3)", textAlign: "center", padding: "2rem 0", fontSize: "0.9rem" }}>
-              No expenses recorded in this group. Click "Add Expense" to record one!
+            <p style={{ color: "var(--text-3)", textAlign: "center", padding: "1.5rem 0", fontSize: "0.85rem" }}>
+              No transactions recorded in this group.
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "1rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginTop: "0.5rem" }}>
               {groupExpenses.map((expense) => {
                 const isExpanded = expandedExpenseId === expense.id;
                 const isUSD = expense.original_currency === "USD";
@@ -479,7 +685,7 @@ export default function GroupsTab() {
                       background: "rgba(0, 0, 0, 0.2)",
                       border: "1px solid var(--border)",
                       borderRadius: "10px",
-                      padding: "1rem 1.25rem",
+                      padding: "0.85rem 1rem",
                     }}
                   >
                     <div
@@ -492,20 +698,20 @@ export default function GroupsTab() {
                       onClick={() => setExpandedExpenseId(isExpanded ? null : expense.id)}
                     >
                       <div>
-                        <span style={{ fontWeight: "600", fontSize: "0.95rem", display: "block" }}>
+                        <span style={{ fontWeight: "600", fontSize: "0.9rem", display: "block" }}>
                           {expense.description}
                         </span>
                         <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-                          Paid by {payerName} on {formatDate(expense.expense_date)}
+                          Paid by {payerName} on {formatDateLabel(expense.expense_date)}
                         </span>
                       </div>
 
                       <div style={{ textAlign: "right" }}>
-                        <span style={{ fontWeight: "700", color: "var(--text-1)" }}>
+                        <span style={{ fontWeight: "700", color: "var(--text-1)", fontSize: "0.95rem" }}>
                           ₹{parseFloat(expense.amount_inr).toFixed(2)}
                         </span>
                         {isUSD && (
-                          <span style={{ fontSize: "0.7rem", color: "var(--text-3)", display: "block" }}>
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-3)", display: "block" }}>
                             Original: ${parseFloat(expense.original_amount).toFixed(2)}
                           </span>
                         )}
@@ -515,36 +721,36 @@ export default function GroupsTab() {
                     {isExpanded && (
                       <div
                         style={{
-                          marginTop: "1rem",
-                          paddingTop: "0.75rem",
+                          marginTop: "0.75rem",
+                          paddingTop: "0.5rem",
                           borderTop: "1px solid var(--border)",
                           animation: "fadeIn 0.15s ease-out",
                         }}
                       >
-                        <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginBottom: "0.5rem" }}>
+                        <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginBottom: "0.4rem" }}>
                           Split Method: <span style={{ textTransform: "capitalize" }}>{expense.split_type}</span>
                         </p>
                         {expense.notes && (
-                          <p style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: "0.75rem", background: "rgba(0,0,0,0.15)", padding: "0.5rem", borderRadius: "4px" }}>
+                          <p style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: "0.5rem", background: "rgba(0,0,0,0.15)", padding: "0.4rem", borderRadius: "4px" }}>
                             <strong>Notes:</strong> {expense.notes}
                           </p>
                         )}
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
                           {expense.shares.map((share) => (
                             <div
                               key={share.id}
                               style={{
                                 display: "flex",
                                 justifyContent: "space-between",
-                                fontSize: "0.85rem",
+                                fontSize: "0.8rem",
                                 background: "rgba(255,255,255,0.01)",
-                                padding: "0.35rem 0.5rem",
+                                padding: "0.25rem 0.4rem",
                                 borderRadius: "4px",
                               }}
                             >
                               <span>{share.user.name}</span>
                               <div style={{ display: "flex", gap: "0.75rem" }}>
-                                <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                                <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>
                                   {share.share_raw}
                                 </span>
                                 <span style={{ fontWeight: "600", color: "var(--text-2)" }}>
@@ -562,6 +768,223 @@ export default function GroupsTab() {
             </div>
           )}
         </div>
+
+        {/* Balance Drilldown Verification Modal (Rohan's Traceability) */}
+        {selectedDrilldownUser && (
+          <div className="modal-overlay">
+            <div className="modal-content" style={{ maxWidth: "600px", padding: "1.75rem" }}>
+              <div className="modal-header">
+                <h3 className="modal-title">Audit Log — {selectedDrilldownUser.name}</h3>
+                <button className="modal-close" onClick={() => setSelectedDrilldownUser(null)}>&times;</button>
+              </div>
+
+              {drilldownLoading ? (
+                <div className="check-list" style={{ justifyContent: "center", padding: "2rem" }}>
+                  <div className="loading-spinner" style={{ margin: "auto" }} />
+                </div>
+              ) : !drilldownData ? (
+                <p>Failed to load audit logs.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", maxHeight: "450px", overflowY: "auto", paddingRight: "0.5rem" }}>
+                  {/* Math recap formula */}
+                  <div
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px",
+                      padding: "1rem",
+                      fontSize: "0.85rem",
+                      textAlign: "center",
+                    }}
+                  >
+                    <span style={{ color: "var(--text-3)", display: "block", marginBottom: "0.4rem" }}>ACCOUNTING FORMULA</span>
+                    <div style={{ fontWeight: "700", fontSize: "1rem" }}>
+                      Paid (₹{drilldownData.expenses_paid.reduce((acc, e) => acc + parseFloat(e.amount_inr), 0).toFixed(2)}) 
+                      - Owed (₹{drilldownData.shares_owed.reduce((acc, s) => acc + parseFloat(s.share_amount_inr), 0).toFixed(2)}) 
+                      + Settled Paid (₹{drilldownData.settlements_paid.reduce((acc, s) => acc + parseFloat(s.amount_inr), 0).toFixed(2)}) 
+                      - Settled Recv (₹{drilldownData.settlements_received.reduce((acc, s) => acc + parseFloat(s.amount_inr), 0).toFixed(2)})
+                    </div>
+                    <div style={{ marginTop: "0.5rem", fontSize: "1.1rem", color: selectedDrilldownUser.net_balance >= 0 ? "var(--success)" : "var(--error)", fontWeight: "800" }}>
+                      = Net: {selectedDrilldownUser.net_balance >= 0 ? "+" : ""}
+                      {selectedDrilldownUser.net_balance.toFixed(2)} INR
+                    </div>
+                  </div>
+
+                  {/* Expenses Paid section */}
+                  <div>
+                    <h4 style={{ fontSize: "0.88rem", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-3)", borderBottom: "1px solid var(--border)", paddingBottom: "0.25rem" }}>
+                      1. Expenses Paid (Lent)
+                    </h4>
+                    {drilldownData.expenses_paid.length === 0 ? (
+                      <p style={{ fontSize: "0.8rem", color: "var(--text-3)", marginTop: "0.25rem" }}>No expenses paid.</p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}>
+                        {drilldownData.expenses_paid.map((e) => (
+                          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                            <span>{e.description} <small style={{ color: "var(--text-3)" }}>({formatDateLabel(e.expense_date)})</small></span>
+                            <span style={{ fontWeight: "600" }}>+₹{parseFloat(e.amount_inr).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Shares Owed section */}
+                  <div>
+                    <h4 style={{ fontSize: "0.88rem", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-3)", borderBottom: "1px solid var(--border)", paddingBottom: "0.25rem" }}>
+                      2. Shares Owed (Consumed)
+                    </h4>
+                    {drilldownData.shares_owed.length === 0 ? (
+                      <p style={{ fontSize: "0.8rem", color: "var(--text-3)", marginTop: "0.25rem" }}>No shares owed.</p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}>
+                        {drilldownData.shares_owed.map((s) => (
+                          <div key={s.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                            <span>
+                              {s.expense_description}{" "}
+                              <small style={{ color: "var(--text-3)" }}>
+                                ({formatDateLabel(s.expense_date)} • {s.share_raw})
+                              </small>
+                            </span>
+                            <span style={{ color: "var(--text-2)" }}>-₹{parseFloat(s.share_amount_inr).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Settlements Paid/Received */}
+                  <div>
+                    <h4 style={{ fontSize: "0.88rem", textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-3)", borderBottom: "1px solid var(--border)", paddingBottom: "0.25rem" }}>
+                      3. Settlements (Payments)
+                    </h4>
+                    {drilldownData.settlements_paid.length === 0 && drilldownData.settlements_received.length === 0 ? (
+                      <p style={{ fontSize: "0.8rem", color: "var(--text-3)", marginTop: "0.25rem" }}>No settlements recorded.</p>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.4rem" }}>
+                        {drilldownData.settlements_paid.map((s) => (
+                          <div key={s.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--success)" }}>
+                            <span>Paid to {s.paid_to_name} <small style={{ color: "var(--text-3)" }}>({formatDateLabel(s.settled_at)})</small></span>
+                            <span style={{ fontWeight: "600" }}>+₹{parseFloat(s.amount_inr).toFixed(2)}</span>
+                          </div>
+                        ))}
+                        {drilldownData.settlements_received.map((s) => (
+                          <div key={s.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", color: "var(--error)" }}>
+                            <span>Received from {s.paid_by_name} <small style={{ color: "var(--text-3)" }}>({formatDateLabel(s.settled_at)})</small></span>
+                            <span style={{ fontWeight: "600" }}>-₹{parseFloat(s.amount_inr).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-footer" style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", marginTop: "1rem" }}>
+                <button className="btn-primary" style={{ width: "auto" }} onClick={() => setSelectedDrilldownUser(null)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Record Settlement Modal (Settle Up) */}
+        {showSettleModal && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h3 className="modal-title">Record Settlement</h3>
+                <button className="modal-close" onClick={() => setShowSettleModal(false)}>&times;</button>
+              </div>
+
+              <form onSubmit={handleRecordSettlement} className="auth-form">
+                <div className="field">
+                  <label htmlFor="settle-from">Who Paid (Sender)</label>
+                  <select
+                    id="settle-from"
+                    value={settleSender}
+                    onChange={(e) => setSettleSender(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Select Sender --</option>
+                    {selectedGroup.memberships.map((m) => (
+                      <option key={m.user.id} value={m.user.id}>
+                        {m.user.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="settle-to">Who Was Paid (Recipient)</label>
+                  <select
+                    id="settle-to"
+                    value={settleRecipient}
+                    onChange={(e) => setSettleRecipient(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Select Recipient --</option>
+                    {selectedGroup.memberships.map((m) => (
+                      <option key={m.user.id} value={m.user.id}>
+                        {m.user.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="settle-amount">Amount (INR)</label>
+                  <input
+                    id="settle-amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="₹ 0.00"
+                    value={settleAmount}
+                    onChange={(e) => setSettleAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="settle-date">Settled Date</label>
+                  <input
+                    id="settle-date"
+                    type="date"
+                    value={settleDate}
+                    onChange={(e) => setSettleDate(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="settle-notes">Notes</label>
+                  <input
+                    id="settle-notes"
+                    type="text"
+                    placeholder="e.g. Settle taxi split, cash payment"
+                    value={settleNotes}
+                    onChange={(e) => setSettleNotes(e.target.value)}
+                  />
+                </div>
+
+                {formError && (
+                  <div className="auth-error">
+                    <span className="auth-error-icon">⚠️</span>
+                    <span>{formError}</span>
+                  </div>
+                )}
+
+                <div className="modal-footer">
+                  <button type="button" className="btn-secondary" onClick={() => setShowSettleModal(false)} disabled={submitting}>Cancel</button>
+                  <button type="submit" className="btn-primary" style={{ width: "auto" }} disabled={submitting}>
+                    {submitting ? "Saving..." : "Record Payment"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Add Member Modal */}
         {showAddMemberModal && (
@@ -713,14 +1136,10 @@ export default function GroupsTab() {
                     value={expenseDate}
                     onChange={(e) => {
                       setExpenseDate(e.target.value);
-                      // Clear split values on date change since active members change
                       setSplitValues({});
                     }}
                     required
                   />
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-                    Only members active on this date will participate in the split.
-                  </span>
                 </div>
 
                 <div style={{ display: "flex", gap: "1rem" }}>
@@ -808,7 +1227,7 @@ export default function GroupsTab() {
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
                       {activeMembersForExpense.map((m) => {
                         const val = splitValues[m.user.id] || "";
-                        
+
                         return (
                           <div
                             key={m.user.id}
@@ -820,7 +1239,7 @@ export default function GroupsTab() {
                             }}
                           >
                             <span>{m.user.name}</span>
-                            
+
                             {splitType === "equal" ? (
                               <span style={{ color: "var(--text-3)", fontSize: "0.8rem" }}>
                                 {originalAmount ? `₹${((parseFloat(originalAmount) * (originalCurrency === "USD" ? 83.50 : 1.0)) / activeMembersForExpense.length).toFixed(2)}` : "—"}

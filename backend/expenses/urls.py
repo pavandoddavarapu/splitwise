@@ -1,24 +1,27 @@
 """
 Expenses URL configuration.
 
-Maps endpoints to Expense and (eventually) Settlement views.
+Maps endpoints to Expense, Balance Calculation, Drill-down, and Settlement views.
 """
 
 from django.urls import path
 from .views import (
     ExpenseListCreateView,
     ExpenseRetrieveUpdateDestroyView,
+    GroupBalancesView,
+    UserBalanceDetailView,
+    SettlementListCreateView,
 )
 
 urlpatterns = [
-    # Step 4: Expenses CRUD
+    # Expenses CRUD
     path("", ExpenseListCreateView.as_view(), name="expense-list-create"),
     path("<int:pk>/", ExpenseRetrieveUpdateDestroyView.as_view(), name="expense-detail"),
     
-    # Step 5 placeholder (to be wired in next step)
-    # path("groups/<int:group_id>/balances/", ..., name="group-balances"),
-    # path("users/<int:user_id>/balance-detail/", ..., name="user-balance-detail"),
+    # Balances & Drill-down
+    path("groups/<int:group_id>/balances/", GroupBalancesView.as_view(), name="group-balances"),
+    path("users/<int:user_id>/balance-detail/", UserBalanceDetailView.as_view(), name="user-balance-detail"),
     
-    # Step 6 placeholder (to be wired in settlement step)
-    # path("settlements/", ..., name="settlement-list-create"),
+    # Settlements CRUD
+    path("settlements/", SettlementListCreateView.as_view(), name="settlement-list-create"),
 ]

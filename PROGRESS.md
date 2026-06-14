@@ -7,9 +7,9 @@ See brief Section-0 for the full session-continuity protocol.
 
 ## Current status
 
-**Last completed step**: Step 4 — Manual expense creation (all 4 split types)
-**Next step**: Step 5 — Balance calculation (net balances) + drill-down view
-**Awaiting**: Human confirmation to proceed to Step 5
+**Last completed step**: Step 5 & 6 — Balance calculation and settlement recording
+**Next step**: Step 7 — CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11)
+**Awaiting**: Human confirmation to proceed to Step 7
 
 ---
 
@@ -21,13 +21,30 @@ See brief Section-0 for the full session-continuity protocol.
 | 2 | Auth (login/signup, DRF TokenAuthentication) | ✅ Complete | `feat: auth endpoints register/login/logout/me + React auth UI` |
 | 3 | Groups + group memberships CRUD (with join/leave dates) | ✅ Complete | `feat: groups and memberships CRUD with join/leave dates` |
 | 4 | Manual expense creation (all 4 split types) | ✅ Complete | `feat: manual expense creation with all 4 split types and date filter` |
-| 5 | Balance calculation (net balances) + drill-down view | ⬜ Not started | — |
-| 6 | Settlement recording | ⬜ Not started | — |
+| 5 | Balance calculation (net balances) + drill-down view | ✅ Complete | `feat: live balance calculation, simplified settlements, and audit drill-down` |
+| 6 | Settlement recording | ✅ Complete | `feat: live balance calculation, simplified settlements, and audit drill-down` |
 | 7 | CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11) | ⬜ Not started | — |
 | 8 | CSV import: semantic anomaly rules (#3–5,9,10,12–16) + import report UI | ⬜ Not started | — |
 | 9 | End-to-end import of real CSV, verify balances, fix issues | ⬜ Not started | — |
 | 10 | UI polish + finalize deployment | ⬜ Not started | — |
 | 11 | Finalize README, SCOPE, DECISIONS, AI_USAGE | ⬜ Not started | — |
+
+---
+
+## Step 5 & 6 — What was built
+
+### Backend Balances & Settlements
+- Created `GroupBalancesView` (`GET /api/expenses/groups/<group_id>/balances/`) to compute user balances live from rows.
+- Implemented a greedy settlement simplification algorithm (Aisha's view) pairing the largest debtors with largest creditors to produce the minimum set of transactions required to resolve all debts.
+- Created `UserBalanceDetailView` (`GET /api/expenses/users/<user_id>/balance-detail/`) providing a complete trace of: expenses paid, shares owed, settlements paid, and settlements received for a specific group (Rohan's audit requirement).
+- Created `SettlementListCreateView` (`GET/POST /api/expenses/settlements/`) to record payments with validation.
+- Added test case `GroupBalancesAndSettlementsTest` in `expenses/tests.py` verifying balances calculation, simplification matching, and drill-down traces. Total suite is 15 tests.
+
+### Frontend Balances & Settle Up
+- Added a Live Balances table in the group details view of [GroupsTab.jsx](file:///c:/Users/pavan/OneDrive/Desktop/spreetail/frontend/src/pages/GroupsTab.jsx).
+- Displays the simplified debts list with quick-action "Settle up" shortcuts that pre-fill the sender, recipient, and amount.
+- Implemented a Balance Drilldown Verification modal. Clicking on any member's row shows the complete audit trace and formula recap: `Paid - Owed + Settled Paid - Settled Received = Net`.
+- Added a Record Settlement form modal.
 
 ---
 
@@ -92,7 +109,7 @@ See brief Section-0 for the full session-continuity protocol.
 - `AI_USAGE.md` — stub created
 
 ### Deviations from brief
-- None for Step 4.
+- None for Step 5 & 6.
 
 ---
 

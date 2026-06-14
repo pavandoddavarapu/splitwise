@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from groups.models import Group, GroupMembership
-from .models import Expense, ExpenseShare
+from .models import Expense, ExpenseShare, Settlement
 
 User = get_user_model()
 
@@ -360,3 +360,45 @@ class ExpenseSerializer(serializers.ModelSerializer):
                 )
 
         return instance
+
+
+class SettlementSerializer(serializers.ModelSerializer):
+    paid_by_name = serializers.CharField(source="paid_by.name", read_only=True)
+    paid_to_name = serializers.CharField(source="paid_to.name", read_only=True)
+
+    class Meta:
+        model = Settlement
+        fields = [
+            "id",
+            "group",
+            "paid_by",
+            "paid_by_name",
+            "paid_to",
+            "paid_to_name",
+            "amount_inr",
+            "settled_at",
+            "source",
+            "notes",
+        ]
+        read_only_fields = ["source"]
+
+    def validate(self, attrs):
+        paid_by = attrs.get("paid_by")
+        paid_to = attrs.get("paid_to")
+        amount_inr = attrs.get("amount_inr")
+        group = attrs.get("group")
+
+        if paid_by == paid_to:
+            raise serializers.ValidationError("A user cannot settle with themselves.")
+        if amount_inr <= 0:
+            raise serializers.ValidationError("Settlement amount must be positive.")
+
+        # Ensure both are members of the group
+        members = set(GroupMembership.objects.filter(group=group).values_list("user_id", flat=True))
+        if paid_by.id not in members:
+            raise serializers.ValidationError({"paid_by": "Sender must be a member of the group."})
+        if paid_to.id not in members:
+            raise serializers.ValidationError({"paid_to": "Recipient must be a member of the group."})
+
+        return attrs
+

@@ -288,3 +288,122 @@ class ExpenseSplitLogicTest(APITestCase):
         response = self.client.post("/api/expenses/", data, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("splits", response.data)
+
+
+class GroupBalancesAndSettlementsTest(APITestCase):
+    def setUp(self):
+        from expenses.models import Settlement
+
+        self.user_alice = User.objects.create_user(
+            username="alice@example.com",
+            email="alice@example.com",
+            password="password123",
+            name="Alice",
+        )
+        self.user_bob = User.objects.create_user(
+            username="bob@example.com",
+            email="bob@example.com",
+            password="password123",
+            name="Bob",
+        )
+        self.user_charlie = User.objects.create_user(
+            username="charlie@example.com",
+            email="charlie@example.com",
+            password="password123",
+            name="Charlie",
+        )
+        self.token = Token.objects.create(user=self.user_alice)
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+
+        self.group = Group.objects.create(name="Triplets")
+        GroupMembership.objects.create(
+            group=self.group, user=self.user_alice, joined_at="2026-02-01"
+        )
+        GroupMembership.objects.create(
+            group=self.group, user=self.user_bob, joined_at="2026-02-01"
+        )
+        GroupMembership.objects.create(
+            group=self.group, user=self.user_charlie, joined_at="2026-02-01"
+        )
+
+    def test_live_balances_and_greedy_simplification(self):
+        # 1. Alice pays 300 INR split equally among Alice, Bob, Charlie (100 each)
+        data1 = {
+            "group": self.group.id,
+            "paid_by": self.user_alice.id,
+            "description": "Dinner",
+            "expense_date": "2026-02-15",
+            "original_amount": "300.00",
+            "original_currency": "INR",
+            "split_type": "equal",
+        }
+        self.client.post("/api/expenses/", data1, format="json")
+
+        # 2. Bob pays 150 INR split equally among Bob, Charlie (75 each)
+        data2 = {
+            "group": self.group.id,
+            "paid_by": self.user_bob.id,
+            "description": "Taxi",
+            "expense_date": "2026-02-15",
+            "original_amount": "150.00",
+            "original_currency": "INR",
+            "split_type": "percentage",
+            "splits": [
+                {"user_id": self.user_bob.id, "value": "50"},
+                {"user_id": self.user_charlie.id, "value": "50"},
+            ],
+        }
+        self.client.post("/api/expenses/", data2, format="json")
+
+        # Get Balances
+        response = self.client.get(
+            f"/api/expenses/groups/{self.group.id}/balances/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        balances = {b["user_id"]: b["net_balance"] for b in response.data["balances"]}
+        self.assertEqual(balances[self.user_alice.id], 200.00)
+        self.assertEqual(balances[self.user_bob.id], -25.00)
+        self.assertEqual(balances[self.user_charlie.id], -175.00)
+
+        # Suggested settlements:
+        # Charlie pays Alice 175
+        # Bob pays Alice 25
+        suggested = response.data["suggested_settlements"]
+        self.assertEqual(len(suggested), 2)
+
+        # 3. Record a settlement: Bob pays Alice 25 INR
+        settle_data = {
+            "group": self.group.id,
+            "paid_by": self.user_bob.id,
+            "paid_to": self.user_alice.id,
+            "amount_inr": "25.00",
+            "settled_at": "2026-02-20T12:00:00Z",
+            "notes": "Settled Taxi debt",
+        }
+        response_settle = self.client.post(
+            "/api/expenses/settlements/", settle_data, format="json"
+        )
+        self.assertEqual(response_settle.status_code, status.HTTP_201_CREATED)
+
+        # 4. Check balances again
+        response = self.client.get(
+            f"/api/expenses/groups/{self.group.id}/balances/"
+        )
+        balances = {b["user_id"]: b["net_balance"] for b in response.data["balances"]}
+        self.assertEqual(balances[self.user_alice.id], 175.00)  # 200 - 25 received
+        self.assertEqual(balances[self.user_bob.id], 0.00)  # -25 + 25 paid
+        self.assertEqual(
+            balances[self.user_charlie.id], -175.00
+        )  # no changes for Charlie
+
+        # 5. Check user balance detail (drill-down) for Alice
+        detail_url = f"/api/expenses/users/{self.user_alice.id}/balance-detail/?group={self.group.id}"
+        response_detail = self.client.get(detail_url)
+        self.assertEqual(response_detail.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(len(response_detail.data["expenses_paid"]), 1)
+        self.assertEqual(len(response_detail.data["shares_owed"]), 1)
+        self.assertEqual(len(response_detail.data["settlements_received"]), 1)
+        self.assertEqual(len(response_detail.data["settlements_paid"]), 0)
+
