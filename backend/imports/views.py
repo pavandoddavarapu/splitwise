@@ -202,10 +202,17 @@ class ImportUploadView(APIView):
             elif "pay" in h or "who" in h or "paid" in h or "user" in h or "member" in h:
                 if not any(k in h for k in ["split", "details", "participants", "share"]):
                     col_map["payer"] = idx
-            elif "split_type" in h or "type" in h or "method" in h:
+            elif h == "split_type" or (("type" in h or "method" in h) and "split" not in h.replace("split_type", "")):
                 col_map["split_type"] = idx
-            elif "split_with" in h or "details" in h or "participants" in h or "share" in h or "split_details" in h or "splits" in h:
+            elif h == "split_details" or (h != "split_with" and ("details" in h and "split" in h)):
+                # Dedicated split_details column (weights/amounts like "Rohan 700; Priya 400")
+                col_map["split_details"] = idx
+            elif "split_with" in h or "participants" in h or ("share" in h and "detail" not in h) or "splits" in h:
                 col_map["split_with"] = idx
+            elif "details" in h or "share" in h:
+                # Generic fallback — only if split_with isn't already set
+                if "split_with" not in col_map:
+                    col_map["split_with"] = idx
 
         # Ensure minimal required columns: date, description, amount, payer
         required = ["date", "description", "amount", "payer"]
@@ -239,7 +246,12 @@ class ImportUploadView(APIView):
             raw_currency = row[col_map.get("currency", 999)] if col_map.get("currency", 999) < len(row) else ""
             raw_payer = row[col_map["payer"]] if col_map["payer"] < len(row) else ""
             raw_split_type = row[col_map.get("split_type", 999)] if col_map.get("split_type", 999) < len(row) else "equal"
-            raw_split_with = row[col_map.get("split_with", 999)] if col_map.get("split_with", 999) < len(row) else ""
+
+            # Combine split_with (participant names) and split_details (weights/amounts)
+            raw_split_with_col = row[col_map.get("split_with", 999)] if col_map.get("split_with", 999) < len(row) else ""
+            raw_split_details_col = row[col_map.get("split_details", 999)] if col_map.get("split_details", 999) < len(row) else ""
+            # Prefer split_details if it has data (contains names + amounts), otherwise use split_with
+            raw_split_with = raw_split_details_col.strip() if raw_split_details_col.strip() else raw_split_with_col
 
             row_anomalies = []
 
