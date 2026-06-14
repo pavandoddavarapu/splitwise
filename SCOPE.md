@@ -34,19 +34,19 @@ against `expenses_export.csv`.
 
 | # | Category | Detection rule | Policy | Status |
 |---|----------|---------------|--------|--------|
-| 1 | Mixed date formats | — | Normalize to ISO | ⬜ |
-| 2 | Ambiguous date | — | Default DD/MM, flag | ⬜ |
-| 3 | Exact duplicate rows | — | Import first, skip second, log both | ⬜ |
-| 4 | Conflicting duplicate rows | — | Import both as `disputed` | ⬜ |
-| 5 | Settlement logged as expense | — | Create `settlements` row | ⬜ |
-| 6 | USD amounts | — | Convert at ₹83.50/USD, store rate | ⬜ |
-| 7 | Missing currency | — | Default INR, flag | ⬜ |
-| 8 | Amount formatting | — | Strip/parse/round to 2dp, flag if changed | ⬜ |
-| 9 | Negative amount | — | Treat as refund, flag | ⬜ |
-| 10 | Zero amount | — | `voided` status, flag | ⬜ |
-| 11 | Inconsistent member names | — | Alias map, normalize, flag each | ⬜ |
-| 12 | Missing payer | — | `needs_review`, no expense created | ⬜ |
-| 13 | % split ≠ 100% | — | Rescale proportionally, flag | ⬜ |
-| 14 | split_type/details mismatch | — | Consistent→ignore details; else use details, flag | ⬜ |
-| 15 | Non-member in split_with | — | Exclude, recompute, flag | ⬜ |
-| 16 | Member outside membership window | — | Exclude, recompute, flag | ⬜ |
+| 1 | Mixed date formats | Date non-ISO parsed & normalized | Normalize to ISO | ✅ |
+| 2 | Ambiguous date | DD/MM vs MM/DD ambiguity flagged | Default DD/MM, flag | ✅ |
+| 3 | Exact duplicate rows | Same signature + details duplicate | Import first, skip second, log both | ✅ |
+| 4 | Conflicting duplicate rows | Same signature, diff details/description | Import both as `disputed` | ✅ |
+| 5 | Settlement logged as expense | Settle/repay keyword or 1-to-1 split | Create `settlements` row | ✅ |
+| 6 | USD amounts | Currency == USD | Convert at ₹83.50/USD, store rate | ✅ |
+| 7 | Missing currency | Currency blank | Default INR, flag | ✅ |
+| 8 | Amount formatting | Trailing spaces, commas, symbols | Strip/parse/round to 2dp, flag if changed | ✅ |
+| 9 | Negative amount | Amount < 0 | Treat as refund, flag | ✅ |
+| 10 | Zero amount | Amount == 0 | `voided` status, flag | ✅ |
+| 11 | Inconsistent member names | Clean whitespace / resolve aliases | Alias map, normalize, flag each | ✅ |
+| 12 | Missing payer | Blank or unresolvable payer | `needs_review`, no expense created | ✅ |
+| 13 | % split ≠ 100% | Split percentage sum != 100 | Rescale proportionally, flag | ✅ |
+| 14 | split_type/details mismatch | Details spec differs from split type | Consistent→ignore details; else use details, flag | ✅ |
+| 15 | Non-member in split_with | User not in group membership | Exclude, recompute, flag | ✅ |
+| 16 | Member outside membership window | User active outside window on date | Exclude, recompute, flag | ✅ |

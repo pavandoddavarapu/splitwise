@@ -48,4 +48,23 @@ export const api = {
   put: (path, body) => request("PUT", path, body),
   patch: (path, body) => request("PATCH", path, body),
   delete: (path) => request("DELETE", path),
+  upload: async (path, formData) => {
+    const headers = {};
+    const token = getToken();
+    if (token) {
+      headers["Authorization"] = `Token ${token}`;
+    }
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (res.status === 204) return null;
+    const data = await res.json();
+    if (!res.ok) {
+      throw data;
+    }
+    return data;
+  },
 };
+

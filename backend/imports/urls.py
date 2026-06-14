@@ -4,9 +4,11 @@ Registered under /api/imports/ in the root urls.py.
 """
 
 from django.urls import path
+from .views import ImportUploadView, ImportReportView, AnomalyResolveView
 
 urlpatterns = [
-    # Step 7+8: POST /api/imports/upload/
-    # Step 8:   GET  /api/imports/<batch_id>/report/
-    # Step 8:   POST /api/imports/anomalies/<id>/resolve/
+    path("upload/", ImportUploadView.as_view(), name="import_upload"),
+    path("<int:batch_id>/report/", ImportReportView.as_view(), name="import_report"),
+    path("anomalies/<int:anomaly_id>/resolve/", AnomalyResolveView.as_view(), name="anomaly_resolve"),
 ]
+

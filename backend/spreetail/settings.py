@@ -19,7 +19,7 @@ REPO_ROOT = BASE_DIR.parent  # one level up from /backend
 load_dotenv(BASE_DIR / ".env")
 
 # ── Core settings ─────────────────────────────────────────────────────────────
-SECRET_KEY = os.environ["SECRET_KEY"]
+SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-fallback-key-for-builds")
 
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "yes")
 

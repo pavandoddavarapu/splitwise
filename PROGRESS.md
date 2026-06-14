@@ -7,9 +7,9 @@ See brief Section-0 for the full session-continuity protocol.
 
 ## Current status
 
-**Last completed step**: Step 5 & 6 — Balance calculation and settlement recording
-**Next step**: Step 7 — CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11)
-**Awaiting**: Human confirmation to proceed to Step 7
+**Last completed step**: Step 7, 8 & 9 — CSV Import pipeline and UI
+**Next step**: Step 10 — UI Polish + finalize deployment
+**Awaiting**: Human confirmation to proceed to Step 10
 
 ---
 
@@ -23,11 +23,30 @@ See brief Section-0 for the full session-continuity protocol.
 | 4 | Manual expense creation (all 4 split types) | ✅ Complete | `feat: manual expense creation with all 4 split types and date filter` |
 | 5 | Balance calculation (net balances) + drill-down view | ✅ Complete | `feat: live balance calculation, simplified settlements, and audit drill-down` |
 | 6 | Settlement recording | ✅ Complete | `feat: live balance calculation, simplified settlements, and audit drill-down` |
-| 7 | CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11) | ⬜ Not started | — |
-| 8 | CSV import: semantic anomaly rules (#3–5,9,10,12–16) + import report UI | ⬜ Not started | — |
-| 9 | End-to-end import of real CSV, verify balances, fix issues | ⬜ Not started | — |
+| 7 | CSV import: parsing + formatting/date/currency rules (#1,2,6–8,11) | ✅ Complete | `feat: implement full CSV import pipeline, 17 anomaly rules, and report UI` |
+| 8 | CSV import: semantic anomaly rules (#3–5,9,10,12–16) + import report UI | ✅ Complete | `feat: implement full CSV import pipeline, 17 anomaly rules, and report UI` |
+| 9 | End-to-end import of real CSV, verify balances, fix issues | ✅ Complete | `feat: implement full CSV import pipeline, 17 anomaly rules, and report UI` |
 | 10 | UI polish + finalize deployment | ⬜ Not started | — |
 | 11 | Finalize README, SCOPE, DECISIONS, AI_USAGE | ⬜ Not started | — |
+
+---
+
+## Step 7, 8 & 9 — What was built
+
+### Backend CSV Import Rules Engine
+- Created `ImportUploadView` (`POST /api/imports/upload/`) processing files, mapping headers dynamically, and executing all 17 anomaly detection rules in a single atomic transaction.
+- Auto-handles currency (USD conversion at ₹83.50), formats numbers, detects settlements (rerouted as Settlement objects), exact/conflicting duplicates (imported as disputed and flagged), mixed date formats, and ambiguous date parsing.
+- Handles name normalization (strip, lowercase, alias mapping for Priya/Rohan).
+- Excludes guest Kabir from splits and blocks database row creation for him.
+- Filters out non-members or members inactive on transaction dates (`covers_date`) and recomputes splits proportionally (Largest Remainder Method).
+- Implemented `/api/imports/<batch_id>/report/` and `/api/imports/anomalies/<id>/resolve/` supporting manual Approve/Reject flows.
+- Added 5 new unit tests in `imports/tests.py` verifying Rules 3, 4, 5, 12, and 16. Total test suite is 20 tests.
+
+### Frontend Import UI
+- Activated the "Import CSV" sidebar menu navigation.
+- Created `ImportsTab` UI featuring drag-and-drop zone, target group selector, and responsive file processing.
+- Renders detailed post-import report showing processed rows, total anomalies, and an interactive anomaly audit table.
+- Embedded inline action controls: "Approve" (with member dropdown selector for missing payer anomalies) and "Reject" to resolve needs-review anomalies in real time.
 
 ---
 

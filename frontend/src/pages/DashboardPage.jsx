@@ -10,6 +10,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { api } from "../api/client";
 import GroupsTab from "./GroupsTab";
 import ExpensesTab from "./ExpensesTab";
+import ImportsTab from "./ImportsTab";
 
 function StatusBadge({ status }) {
   if (status === "checking")
@@ -80,7 +81,16 @@ export default function DashboardPage() {
             Expenses
           </a>
           <a href="#" className="nav-item nav-item--disabled">Settlements</a>
-          <a href="#" className="nav-item nav-item--disabled">Import CSV</a>
+          <a
+            href="#"
+            className={`nav-item ${activeTab === "imports" ? "nav-item--active" : ""}`}
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab("imports");
+            }}
+          >
+            Import CSV
+          </a>
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user">
@@ -119,6 +129,18 @@ export default function DashboardPage() {
               </div>
             </header>
             <ExpensesTab />
+          </>
+        )}
+
+        {activeTab === "imports" && (
+          <>
+            <header className="dash-header">
+              <div>
+                <h1 className="dash-title">Import CSV 📥</h1>
+                <p className="dash-subtitle">Upload shared expense exports and audit anomalies</p>
+              </div>
+            </header>
+            <ImportsTab />
           </>
         )}
 
