@@ -1,12 +1,16 @@
 """
-Accounts URL stubs — login/signup endpoints will be implemented in Step 2.
+Accounts URL configuration.
 Registered under /api/auth/ in the root urls.py.
 """
 
 from django.urls import path
 
+from . import views
+
 urlpatterns = [
-    # Step 2: POST /api/auth/login/
-    # Step 2: POST /api/auth/signup/
-    # Step 2: POST /api/auth/logout/
+    path("register/", views.RegisterView.as_view(), name="auth-register"),
+    path("login/", views.LoginView.as_view(), name="auth-login"),
+    path("logout/", views.LogoutView.as_view(), name="auth-logout"),
+    path("me/", views.MeView.as_view(), name="auth-me"),
 ]
+

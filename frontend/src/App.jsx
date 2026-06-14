@@ -1,44 +1,74 @@
-import { useState, useEffect } from "react";
+/**
+ * App — root component wiring together the router, auth context, and pages.
+ *
+ * Route structure:
+ *   /auth  → AuthPage   (public — redirects to / if already logged in)
+ *   /      → DashboardPage (protected — redirects to /auth if not logged in)
+ *   *      → redirect to /
+ *
+ * ProtectedRoute / PublicRoute both wait for auth loading to finish before
+ * making a redirect decision — prevents a flash-of-redirect on page load
+ * where the token hasn't been validated yet.
+ */
+
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import AuthPage from "./pages/AuthPage";
+import DashboardPage from "./pages/DashboardPage";
 import "./App.css";
 
-/**
- * Hello-world shell for Step 1.
- *
- * Proves the full pipeline:
- *   Django (Render) → whitenoise → React index.html → this component
- *
- * Also hits the health-check endpoint to confirm Django is reachable
- * from the same origin (no CORS, no separate deployment).
- *
- * This component will be replaced with real routing and UI from Step 2 onward.
- */
-function App() {
-  const [apiStatus, setApiStatus] = useState("checking…");
-
-  useEffect(() => {
-    fetch("/api/health/")
-      .then((res) => res.json())
-      .then((data) => setApiStatus(data.status ?? "ok"))
-      .catch(() => setApiStatus("unreachable — start Django or check deploy"));
-  }, []);
-
+function LoadingScreen() {
   return (
-    <div className="shell">
-      <div className="card">
-        <h1>🏠 Spreetail</h1>
-        <p className="subtitle">Shared Expenses — scaffold OK</p>
-        <div className="status-row">
-          <span className="label">Django API</span>
-          <span className={`badge ${apiStatus === "ok" ? "ok" : "warn"}`}>
-            {apiStatus}
-          </span>
-        </div>
-        <p className="note">
-          Step 1 complete. Awaiting confirmation to proceed to Step 2 (Auth).
-        </p>
-      </div>
+    <div className="loading-screen">
+      <div className="loading-spinner" />
     </div>
   );
 }
 
-export default App;
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/auth" replace />;
+  return children;
+}
+
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (user) return <Navigate to="/" replace />;
+  return children;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route
+        path="/auth"
+        element={
+          <PublicRoute>
+            <AuthPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

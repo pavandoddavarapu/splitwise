@@ -7,9 +7,9 @@ See brief Section 0 for the full session-continuity protocol.
 
 ## Current status
 
-**Last completed step**: Step 1 — Scaffold
-**Next step**: Step 2 — Auth (login/signup endpoints + token auth)
-**Awaiting**: Human confirmation to proceed to Step 2
+**Last completed step**: Step 2 — Auth
+**Next step**: Step 3 — Groups + group memberships CRUD
+**Awaiting**: Human confirmation to proceed to Step 3
 
 ---
 
@@ -18,7 +18,7 @@ See brief Section 0 for the full session-continuity protocol.
 | Step | Description | Status | Commit |
 |------|-------------|--------|--------|
 | 1 | Scaffold Django + Vite + whitenoise + Render deploy | ✅ Complete | `feat: scaffold Django+DRF+Vite, wire whitenoise, add full schema models` |
-| 2 | Auth (login/signup, DRF TokenAuthentication) | ⬜ Not started | — |
+| 2 | Auth (login/signup, DRF TokenAuthentication) | ✅ Complete | `feat: auth endpoints register/login/logout/me + React auth UI` |
 | 3 | Groups + group memberships CRUD (with join/leave dates) | ⬜ Not started | — |
 | 4 | Manual expense creation (all 4 split types) | ⬜ Not started | — |
 | 5 | Balance calculation (net balances) + drill-down view | ⬜ Not started | — |

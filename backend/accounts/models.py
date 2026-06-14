@@ -22,6 +22,11 @@ class User(AbstractUser):
     # first_name / last_name from AbstractUser are still present but unused.
     name = models.CharField(max_length=255, blank=True)
 
+    # Override email to enforce uniqueness — we use it as the login identifier.
+    # AbstractUser defines email as EmailField(blank=True) with no unique constraint.
+    # Adding unique=True here means one account per email address, enforced at DB level.
+    email = models.EmailField(unique=True)
+
     # created_at mirrors the schema's timestamp column.
     # auto_now_add=True sets it once on INSERT and never updates it.
     created_at = models.DateTimeField(auto_now_add=True)
