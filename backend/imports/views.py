@@ -168,7 +168,15 @@ class ImportUploadView(APIView):
 
         try:
             file_data = csv_file.read().decode("utf-8-sig")
-            csv_reader = csv.reader(io.StringIO(file_data))
+            # Automatically detect delimiter
+            delimiter = ","
+            first_line = file_data.split("\n")[0] if file_data else ""
+            if ";" in first_line and first_line.count(";") > first_line.count(","):
+                delimiter = ";"
+            elif "\t" in first_line and first_line.count("\t") > first_line.count(","):
+                delimiter = "\t"
+
+            csv_reader = csv.reader(io.StringIO(file_data), delimiter=delimiter)
         except Exception as e:
             return Response({"error": f"Failed to parse CSV file: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -183,26 +191,30 @@ class ImportUploadView(APIView):
         # Find column indices
         col_map = {}
         for idx, h in enumerate(headers):
-            if "date" in h:
+            if "date" in h or "when" in h:
                 col_map["date"] = idx
-            elif "desc" in h or "item" in h:
+            elif "desc" in h or "item" in h or "what" in h:
                 col_map["description"] = idx
-            elif "amount" in h or "cost" in h or "price" in h:
+            elif "amount" in h or "cost" in h or "price" in h or "value" in h or "total" in h:
                 col_map["amount"] = idx
             elif "curr" in h:
                 col_map["currency"] = idx
-            elif "pay" in h or "who" in h:
-                col_map["payer"] = idx
-            elif "split_type" in h or "type" in h or "split_method" in h:
+            elif "pay" in h or "who" in h or "paid" in h or "user" in h or "member" in h:
+                if not any(k in h for k in ["split", "details", "participants", "share"]):
+                    col_map["payer"] = idx
+            elif "split_type" in h or "type" in h or "method" in h:
                 col_map["split_type"] = idx
-            elif "split_with" in h or "details" in h or "participants" in h or "share" in h or "split_details" in h:
+            elif "split_with" in h or "details" in h or "participants" in h or "share" in h or "split_details" in h or "splits" in h:
                 col_map["split_with"] = idx
 
         # Ensure minimal required columns: date, description, amount, payer
         required = ["date", "description", "amount", "payer"]
         missing = [r for r in required if r not in col_map]
         if missing:
-            return Response({"error": f"Missing required columns in CSV: {', '.join(missing)}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "error": f"Missing required columns in CSV: {', '.join(missing)}",
+                "detected_headers": headers
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         processed_rows = []
         anomalies_to_create = []
