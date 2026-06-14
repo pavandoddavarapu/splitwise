@@ -828,7 +828,18 @@ class AnomalyResolveView(APIView):
 
         # Parse row fields to create database records
         raw_row = anomaly.raw_row
-        group = anomaly.batch.anomalies.first().linked_expense.group if anomaly.batch.anomalies.filter(linked_expense__isnull=False).exists() else None
+        
+        # Determine group
+        group_id = request.data.get("group_id")
+        group = None
+        if group_id:
+            try:
+                group = Group.objects.get(pk=group_id)
+            except (Group.DoesNotExist, ValueError):
+                pass
+        
+        if not group:
+            group = anomaly.batch.anomalies.first().linked_expense.group if anomaly.batch.anomalies.filter(linked_expense__isnull=False).exists() else None
         if not group:
             # Fallback: get first group in database
             group = Group.objects.first()
@@ -870,7 +881,7 @@ class AnomalyResolveView(APIView):
         # Determine payer
         if not payer_user:
             # Try parsing from row
-            raw_payer = raw_row.get("payer") or raw_row.get("who_paid") or ""
+            raw_payer = raw_row.get("payer") or raw_row.get("paid_by") or raw_row.get("who_paid") or ""
             payer_clean = normalize_name(raw_payer)
             if payer_clean:
                 payer_user = User.objects.filter(name__iexact=payer_clean).first()
@@ -878,11 +889,30 @@ class AnomalyResolveView(APIView):
         if not payer_user:
             return Response({"error": "Payer is missing or could not be resolved. Please specify payer_id."}, status=400)
 
+        # Ensure payer is added to the group if they are not already a member
+        if group:
+            membership = GroupMembership.objects.filter(group=group, user=payer_user).first()
+            if not membership:
+                GroupMembership.objects.create(
+                    group=group,
+                    user=payer_user,
+                    joined_at=parsed_date if parsed_date else date.today(),
+                    left_at=None
+                )
+            else:
+                # Adjust join date to cover the expense date if necessary
+                if parsed_date < membership.joined_at:
+                    membership.joined_at = parsed_date
+                    membership.save()
+                if membership.left_at and parsed_date > membership.left_at:
+                    membership.left_at = None
+                    membership.save()
+
         # Create database rows
         # Check if settlement
         is_settlement = False
         desc_lower = raw_desc.lower()
-        if "settle" in desc_lower or "settlement" in desc_lower or "repay" in desc_lower or "paid back" in desc_lower:
+        if "settle" in desc_lower or "settlement" in desc_lower or "repay" in desc_lower or "paid back" in desc_lower or "transfer" in desc_lower:
             is_settlement = True
 
         if is_settlement:
@@ -898,7 +928,36 @@ class AnomalyResolveView(APIView):
                         break
             if not receiver:
                 # Get a member
-                receiver = GroupMembership.objects.filter(group=group).exclude(user=payer_user).first().user
+                m_membership = GroupMembership.objects.filter(group=group).exclude(user=payer_user).first()
+                if m_membership:
+                    receiver = m_membership.user
+            
+            # If still no receiver (e.g. only one member), find any other user or default
+            if not receiver:
+                other_user = User.objects.exclude(id=payer_user.id).first()
+                if other_user:
+                    receiver = other_user
+
+            # Ensure receiver is also a member of the group
+            if receiver and group:
+                rec_membership = GroupMembership.objects.filter(group=group, user=receiver).first()
+                if not rec_membership:
+                    GroupMembership.objects.create(
+                        group=group,
+                        user=receiver,
+                        joined_at=parsed_date if parsed_date else date.today(),
+                        left_at=None
+                    )
+                else:
+                    if parsed_date < rec_membership.joined_at:
+                        rec_membership.joined_at = parsed_date
+                        rec_membership.save()
+                    if rec_membership.left_at and parsed_date > rec_membership.left_at:
+                        rec_membership.left_at = None
+                        rec_membership.save()
+
+            if not receiver:
+                return Response({"error": "A recipient is required for the settlement. Please add more members to the group."}, status=400)
 
             settlement = Settlement.objects.create(
                 group=group,
@@ -932,6 +991,8 @@ class AnomalyResolveView(APIView):
             active_members = [m.user for m in GroupMembership.objects.filter(group=group) if m.covers_date(parsed_date)]
             if not active_members:
                 active_members = [m.user for m in GroupMembership.objects.filter(group=group)]
+            if not active_members:
+                active_members = [payer_user]
 
             share_amount = amount_inr / len(active_members)
             for u in active_members:

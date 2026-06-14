@@ -267,6 +267,15 @@ export default function GroupsTab() {
     });
   };
 
+  // Helper: Get users not already in the selected group (for Add Member dropdown)
+  const getAvailableUsers = () => {
+    if (!selectedGroup) return users;
+    const existingUserIds = new Set(
+      selectedGroup.memberships.map((m) => m.user.id)
+    );
+    return users.filter((u) => !existingUserIds.has(u.id));
+  };
+
   // Add Expense
   const handleAddExpense = async (e) => {
     e.preventDefault();

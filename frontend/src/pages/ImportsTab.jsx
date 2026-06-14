@@ -5,6 +5,7 @@ export default function ImportsTab() {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState("");
   const [groupMembers, setGroupMembers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   
   // File upload state
   const [file, setFile] = useState(null);
@@ -28,6 +29,13 @@ export default function ImportsTab() {
         }
       })
       .catch((err) => console.error("Error fetching groups:", err));
+
+    // Fetch all system users
+    api.get("/auth/users/")
+      .then((data) => {
+        setAllUsers(data || []);
+      })
+      .catch((err) => console.error("Error fetching system users:", err));
   }, []);
 
   useEffect(() => {
@@ -101,7 +109,7 @@ export default function ImportsTab() {
   };
 
   const handleResolve = async (anomalyId, action) => {
-    const payload = { action };
+    const payload = { action, group_id: selectedGroup };
     
     if (action === "approve") {
       const selectedPayerId = selectedPayers[anomalyId];
@@ -316,9 +324,9 @@ export default function ImportsTab() {
                                   style={{ padding: "0.25rem", borderRadius: "4px", fontSize: "0.85rem", border: "1px solid #cbd5e1" }}
                                 >
                                   <option value="">-- Select Payer --</option>
-                                  {groupMembers.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                      {m.name}
+                                  {allUsers.map((u) => (
+                                    <option key={u.id} value={u.id}>
+                                      {u.name}
                                     </option>
                                   ))}
                                 </select>
