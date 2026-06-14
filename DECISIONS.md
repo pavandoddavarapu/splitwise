@@ -116,3 +116,15 @@ net = SUM(expense.amount_inr WHERE paid_by = user)
 underlying `expense_shares` rows. If we cache a balance, it can drift from the rows
 and become untrustworthy. Django ORM `annotate(Sum(...))` makes this efficient without
 storing derived data.
+
+---
+
+## D-007 — Auth token storage in client
+
+**Date**: 2026-06-15
+**Step**: 2 (auth)
+
+**Decision**: Auth token stored in localStorage for simplicity; known XSS tradeoff — production would use httpOnly cookies.
+
+**Rationale**: Storing the token in `localStorage` allows easy client-side storage, request headers integration, and auth rehydration without setting up cross-site cookies, CORS, or a cookie proxy. However, `localStorage` is susceptible to cross-site scripting (XSS) attacks. In a production environment, securing tokens in an `httpOnly`, `secure`, and `SameSite=Strict` cookie is preferred to mitigate this threat. For the current scope of the application, this trade-off is accepted for simplicity.
+

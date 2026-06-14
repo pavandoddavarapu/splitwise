@@ -7,9 +7,9 @@ See brief Section 0 for the full session-continuity protocol.
 
 ## Current status
 
-**Last completed step**: Step 2 — Auth
-**Next step**: Step 3 — Groups + group memberships CRUD
-**Awaiting**: Human confirmation to proceed to Step 3
+**Last completed step**: Step 3 — Groups + group memberships CRUD
+**Next step**: Step 4 — Manual expense creation (all 4 split types)
+**Awaiting**: Human confirmation to proceed to Step 4
 
 ---
 
@@ -19,7 +19,7 @@ See brief Section 0 for the full session-continuity protocol.
 |------|-------------|--------|--------|
 | 1 | Scaffold Django + Vite + whitenoise + Render deploy | ✅ Complete | `feat: scaffold Django+DRF+Vite, wire whitenoise, add full schema models` |
 | 2 | Auth (login/signup, DRF TokenAuthentication) | ✅ Complete | `feat: auth endpoints register/login/logout/me + React auth UI` |
-| 3 | Groups + group memberships CRUD (with join/leave dates) | ⬜ Not started | — |
+| 3 | Groups + group memberships CRUD (with join/leave dates) | ✅ Complete | `feat: groups and memberships CRUD with join/leave dates` |
 | 4 | Manual expense creation (all 4 split types) | ⬜ Not started | — |
 | 5 | Balance calculation (net balances) + drill-down view | ⬜ Not started | — |
 | 6 | Settlement recording | ⬜ Not started | — |
@@ -28,6 +28,23 @@ See brief Section 0 for the full session-continuity protocol.
 | 9 | End-to-end import of real CSV, verify balances, fix issues | ⬜ Not started | — |
 | 10 | UI polish + finalize deployment | ⬜ Not started | — |
 | 11 | Finalize README, SCOPE, DECISIONS, AI_USAGE | ⬜ Not started | — |
+
+---
+
+## Step 3 — What was built
+
+### Backend Group & Membership CRUD
+- Created Group and GroupMembership serializers and viewsets (`GET/POST /api/groups/`, `GET/PUT/PATCH/DELETE /api/groups/<id>/`, `GET/POST /api/groups/<id>/members/`, `GET/PUT/PATCH/DELETE /api/groups/<id>/members/<id>/`).
+- Added User listing endpoint (`GET /api/auth/users/`) to fetch registered users.
+- Implemented API validation:
+  - Join/leave date checks (`joined_at <= left_at`).
+  - Strict interval uniqueness (a user can have at most one active interval in a group).
+- Created comprehensive unit tests in `groups/tests.py` testing the `covers_date` method and all validation constraints.
+
+### Frontend Groups Tab
+- Wired up a React-based groups management interface within `DashboardPage.jsx`.
+- Supports creating a group, listing group members, adding members by choosing from a dynamically fetched user list, updating joined/left dates, and removing memberships.
+- Displays validation errors from the Django backend.
 
 ---
 
@@ -50,13 +67,13 @@ See brief Section 0 for the full session-continuity protocol.
 - `vite.config.js` sets `outDir: '../backend/staticfiles_src'` (see note below)
 
 ### Documentation
-- `DECISIONS.md` — D-001 through D-006 populated
-- `PROGRESS.md` (this file) — created
+- `DECISIONS.md` — D-001 through D-007 populated
+- `PROGRESS.md` (this file) — updated
 - `SCOPE.md` — stub created, to be filled with anomaly catalog as steps 7–9 complete
 - `AI_USAGE.md` — stub created
 
 ### Deviations from brief
-- None for Step 1. Tech stack deviation documented in DECISIONS.md D-001 (pre-authorized).
+- None for Step 3.
 
 ---
 
@@ -68,3 +85,4 @@ See brief Section 0 for the full session-continuity protocol.
   variable in Render dashboard after first deploy.
 - GitHub repo `spreetail-shared-expenses` must be created and remote set before
   pushing this commit.
+

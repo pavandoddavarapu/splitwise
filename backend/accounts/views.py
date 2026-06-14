@@ -14,7 +14,7 @@ Why delete the token on logout instead of expiring it?
   short-lived JWT or add a custom expiry field to the token model.
 """
 
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -103,3 +103,16 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+
+class UserListView(generics.ListAPIView):
+    """
+    GET /api/auth/users/
+    Returns: [{ id, name, email, created_at }]
+    Permission: must be authenticated
+    """
+
+    from .models import User  # inline import or use standard
+    queryset = User.objects.all().order_by("name")
+    serializer_class = UserSerializer
+
