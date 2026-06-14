@@ -36,6 +36,12 @@ export default function GroupsTab() {
   const [joinedAt, setJoinedAt] = useState(new Date().toISOString().split("T")[0]);
   const [leftAt, setLeftAt] = useState("");
 
+  // Quick Register User form states
+  const [isCreatingNewUser, setIsCreatingNewUser] = useState(false);
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("Spreetail123!");
+
   // Form states (Expenses)
   const [description, setDescription] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split("T")[0]);
@@ -171,31 +177,79 @@ export default function GroupsTab() {
   // Add Member
   const handleAddMember = async (e) => {
     e.preventDefault();
-    if (!selectedUserId) {
-      setFormError("Please select a user.");
-      return;
-    }
 
     setSubmitting(true);
     setFormError("");
+
+    let targetUserId = selectedUserId;
+
     try {
+      if (isCreatingNewUser) {
+        if (!newUserName.trim()) {
+          setFormError("Please enter a name.");
+          setSubmitting(false);
+          return;
+        }
+        if (!newUserEmail.trim()) {
+          setFormError("Please enter an email.");
+          setSubmitting(false);
+          return;
+        }
+        if (!newUserPassword || newUserPassword.length < 8) {
+          setFormError("Password must be at least 8 characters long.");
+          setSubmitting(false);
+          return;
+        }
+
+        // Register the new user
+        const regRes = await api.post("/auth/register/", {
+          name: newUserName.trim(),
+          email: newUserEmail.trim(),
+          password: newUserPassword,
+        });
+
+        targetUserId = regRes.user.id;
+      } else {
+        if (!targetUserId) {
+          setFormError("Please select a user.");
+          setSubmitting(false);
+          return;
+        }
+      }
+
       await api.post(`/groups/${selectedGroup.id}/members/`, {
-        user_id: parseInt(selectedUserId, 10),
+        user_id: parseInt(targetUserId, 10),
         joined_at: joinedAt,
         left_at: leftAt || null,
       });
+
       setSelectedUserId("");
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserPassword("Spreetail123!");
+      setIsCreatingNewUser(false);
       setJoinedAt(new Date().toISOString().split("T")[0]);
       setLeftAt("");
       setShowAddMemberModal(false);
+
+      // Refresh both lists
+      await fetchUsers();
       await fetchGroups();
     } catch (err) {
-      if (err?.left_at) {
+      if (err?.email) {
+        setFormError(`Email error: ${err.email[0]}`);
+      } else if (err?.name) {
+        setFormError(`Name error: ${err.name[0]}`);
+      } else if (err?.password) {
+        setFormError(`Password error: ${err.password[0]}`);
+      } else if (err?.left_at) {
         setFormError(err.left_at[0]);
       } else if (err?.user_id) {
         setFormError(err.user_id[0]);
       } else if (err?.non_field_errors) {
         setFormError(err.non_field_errors[0]);
+      } else if (err?.detail) {
+        setFormError(err.detail);
       } else {
         setFormError("Failed to add member.");
       }
@@ -465,6 +519,10 @@ export default function GroupsTab() {
               onClick={() => {
                 setFormError("");
                 setSelectedUserId("");
+                setNewUserName("");
+                setNewUserEmail("");
+                setNewUserPassword("Spreetail123!");
+                setIsCreatingNewUser(false);
                 setJoinedAt(new Date().toISOString().split("T")[0]);
                 setLeftAt("");
                 setShowAddMemberModal(true);
@@ -1004,23 +1062,114 @@ export default function GroupsTab() {
                 <button className="modal-close" onClick={() => setShowAddMemberModal(false)}>&times;</button>
               </div>
 
+              {/* Tab toggles */}
+              <div style={{ display: "flex", gap: "1rem", marginBottom: "1.5rem", borderBottom: "1px solid var(--border)", paddingBottom: "0.5rem" }}>
+                <button
+                  type="button"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: !isCreatingNewUser ? "var(--primary)" : "var(--text-2)",
+                    fontWeight: !isCreatingNewUser ? "600" : "400",
+                    borderBottom: !isCreatingNewUser ? "2px solid var(--primary)" : "none",
+                    paddingBottom: "0.5rem",
+                    cursor: "pointer",
+                    fontSize: "0.95rem"
+                  }}
+                  onClick={() => {
+                    setIsCreatingNewUser(false);
+                    setFormError("");
+                  }}
+                >
+                  Existing User
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: isCreatingNewUser ? "var(--primary)" : "var(--text-2)",
+                    fontWeight: isCreatingNewUser ? "600" : "400",
+                    borderBottom: isCreatingNewUser ? "2px solid var(--primary)" : "none",
+                    paddingBottom: "0.5rem",
+                    cursor: "pointer",
+                    fontSize: "0.95rem"
+                  }}
+                  onClick={() => {
+                    setIsCreatingNewUser(true);
+                    setFormError("");
+                  }}
+                >
+                  Create New User
+                </button>
+              </div>
+
               <form onSubmit={handleAddMember} className="auth-form">
-                <div className="field">
-                  <label htmlFor="user-select">Select User</label>
-                  <select
-                    id="user-select"
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Select a user --</option>
-                    {getAvailableUsers().map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.email})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {!isCreatingNewUser ? (
+                  <div className="field">
+                    <label htmlFor="user-select">Select User</label>
+                    <select
+                      id="user-select"
+                      value={selectedUserId}
+                      onChange={(e) => setSelectedUserId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Select a user --</option>
+                      {getAvailableUsers().map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div className="field">
+                      <label htmlFor="new-user-name">Full Name</label>
+                      <input
+                        id="new-user-name"
+                        type="text"
+                        placeholder="e.g. Aisha"
+                        value={newUserName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewUserName(val);
+                          // Auto-generate email from name if unmodified/empty
+                          const cleanName = val.replace(/\s+/g, "").toLowerCase();
+                          setNewUserEmail(cleanName ? `${cleanName}@example.com` : "");
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="new-user-email">Email Address</label>
+                      <input
+                        id="new-user-email"
+                        type="email"
+                        placeholder="e.g. aisha@example.com"
+                        value={newUserEmail}
+                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="new-user-password">Password</label>
+                      <input
+                        id="new-user-password"
+                        type="password"
+                        placeholder="Min 8 characters"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        required
+                      />
+                      <small style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: "0.25rem", display: "block" }}>
+                        Password for this member to log in later.
+                      </small>
+                    </div>
+                  </>
+                )}
 
                 <div className="field">
                   <label htmlFor="join-date">Joined Date</label>
