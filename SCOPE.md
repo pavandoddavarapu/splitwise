@@ -1,4 +1,4 @@
-<![CDATA[# SCOPE.md
+# SCOPE.md
 
 Anomaly log and database schema for the Spreetail Shared Expenses application.
 Every data problem found in `expenses_export.csv` is catalogued below with the specific CSV rows affected, what was detected, and exactly how the system handled it.
@@ -315,4 +315,3 @@ Every anomaly detected during CSV import of `expenses_export.csv`. For each anom
 | 34 | Deep cleaning service | #2 (ambiguous date: 04/05 → needs_review) |
 | 36 | Groceries BigBasket | #16 (Meera outside membership window) |
 | 42 | Furniture for common room | #14 (split_type/details mismatch) |
-]]>

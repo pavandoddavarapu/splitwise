@@ -1,4 +1,4 @@
-<![CDATA[# AI_USAGE.md
+# AI_USAGE.md
 
 Documents all AI tools used during development, key prompts that shaped the project, and concrete cases where the AI produced incorrect output that had to be caught and corrected.
 
@@ -95,4 +95,3 @@ These are the significant prompts that produced non-trivial design decisions or 
 | **What AI got wrong** | The `ImportsTab.jsx` anomaly resolution UI (for "missing payer" anomalies) showed a dropdown to select who paid. The AI populated this dropdown from `groupMembers` — fetched via `GET /api/groups/<id>/members/`. But this API returns **membership objects** with nested user data (`{ id, group, user: { id, name, email }, joined_at, left_at }`), and the code was trying to access `m.name` directly (which doesn't exist on a membership object). Result: the dropdown was completely empty — no users appeared. |
 | **How it was caught** | After importing the CSV, row 13 (missing payer: "House cleaning supplies") showed the anomaly correctly, but the resolution modal's payer dropdown was blank. I could not select anyone to approve the expense. Inspecting the API response showed that the membership objects had `user.name`, not `name` directly. |
 | **Correction applied** | Changed the data source from group members API to the all-users API (`GET /api/auth/users/`), which returns flat user objects `{ id, name, email }`. The dropdown now correctly shows all registered users. Additionally, the resolution payload was updated to include `group_id` so the backend can verify membership when the payer is selected. |
-]]>

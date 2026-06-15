@@ -1,4 +1,4 @@
-<![CDATA[# 💸 Spreetail — Shared Expenses for Flatmates
+# 💸 Spreetail — Shared Expenses for Flatmates
 
 A production-grade expense tracker that handles messy CSV imports, multi-currency conversions, timeline-aware group memberships, and 17 automated anomaly detection rules.
 
@@ -81,44 +81,26 @@ The system doesn't just record expenses — it **ingests chaotic real-world data
 
 ### High-Level Overview
 
-```
-                          ┌─────────────────────┐
-                          │     Browser (SPA)    │
-                          │   React 19 (Vite)    │
-                          └──────────┬──────────┘
-                                     │
-                            HTTPS (same origin)
-                                     │
-                          ┌──────────▼──────────┐
-                          │   Render Web Service │
-                          │                      │
-                          │  ┌────────────────┐  │
-                          │  │   Gunicorn     │  │
-                          │  │  (WSGI Server) │  │
-                          │  └───────┬────────┘  │
-                          │          │           │
-                          │  ┌───────▼────────┐  │
-                          │  │  Django 4.2    │  │
-                          │  │  + DRF         │  │
-                          │  │               │  │
-                          │  │  Apps:         │  │
-                          │  │  • accounts   │  │
-                          │  │  • groups     │  │
-                          │  │  • expenses   │  │
-                          │  │  • imports    │  │
-                          │  │               │  │
-                          │  │  WhiteNoise:  │  │
-                          │  │  static files │  │
-                          │  └───────┬────────┘  │
-                          │          │           │
-                          │  ┌───────▼────────┐  │
-                          │  │  PostgreSQL    │  │
-                          │  │  (Managed)     │  │
-                          │  │  8 tables      │  │
-                          │  │  0 stored      │  │
-                          │  │  balances      │  │
-                          │  └────────────────┘  │
-                          └──────────────────────┘
+```mermaid
+graph TD
+    subgraph Client ["Client Layer"]
+        Browser["Browser (SPA)<br>React 19 + Vite"]
+    end
+
+    subgraph RenderService ["Render Web Service (Single Process)"]
+        Gunicorn["Gunicorn WSGI Server"]
+        Django["Django 4.2 + DRF"]
+        WhiteNoise["WhiteNoise Static Files"]
+    end
+
+    subgraph DB ["Database Layer"]
+        Postgres[(Managed PostgreSQL 16)]
+    end
+
+    Browser -- HTTPS (Same Origin) --> Gunicorn
+    Gunicorn --> Django
+    Gunicorn --> WhiteNoise
+    Django --> Postgres
 ```
 
 ### Request Routing
@@ -156,22 +138,25 @@ No CORS configuration needed. The React build is served by Django via WhiteNoise
 
 ### Relationships
 
-```
-users ──┬── 1:N ──► group_memberships ◄── N:1 ── expense_groups
-        │
-        ├── 1:N ──► expenses (paid_by) ◄── N:1 ── expense_groups
-        │               │
-        │               └── 1:N ──► expense_shares ◄── N:1 ── users
-        │
-        ├── 1:N ──► settlements (paid_by) ◄── N:1 ── expense_groups
-        │               ▲
-        │               └── N:1 ── users (paid_to)
-        │
-        └── 1:N ──► import_batches
-                        │
-                        └── 1:N ──► import_anomalies
-                                        ├── FK ──► expenses (nullable)
-                                        └── FK ──► settlements (nullable)
+```mermaid
+erDiagram
+    users ||--o{ group_memberships : "has"
+    expense_groups ||--o{ group_memberships : "contains"
+    
+    users ||--o{ expenses : "paid_by"
+    expense_groups ||--o{ expenses : "has"
+    
+    expenses ||--o{ expense_shares : "split_into"
+    users ||--o{ expense_shares : "owes_share"
+    
+    users ||--o{ settlements : "paid_by"
+    users ||--o{ settlements : "paid_to"
+    expense_groups ||--o{ settlements : "has"
+    
+    users ||--o{ import_batches : "uploaded_by"
+    import_batches ||--o{ import_anomalies : "contains"
+    expenses ||--o{ import_anomalies : "referenced_by"
+    settlements ||--o{ import_anomalies : "referenced_by"
 ```
 
 ### Key Schema Design Principles
@@ -499,4 +484,3 @@ Key architectural choices are documented in `DECISIONS.md`. Highlights:
 ---
 
 *Built by [Pavan Doddavarapu](https://github.com/pavandoddavarapu)*
-]]>

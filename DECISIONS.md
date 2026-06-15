@@ -1,4 +1,4 @@
-<![CDATA[# DECISIONS.md
+# DECISIONS.md
 
 Decision log for the Spreetail Shared Expenses app.
 Each entry documents a significant architectural or design decision: what was decided, what alternatives were considered, and why the chosen option won.
@@ -215,4 +215,3 @@ Result: [278.34, 278.33, 278.33] — sums to exactly 835.00 ✓
 | **Two-phase (stage then commit)** | User reviews before committing | Much more complex; requires a staging table and a separate approval step |
 
 **Why chosen**: The anomaly detection system handles bad rows gracefully (skipping duplicates, flagging missing payers, converting currencies) — there's no reason a well-handled anomaly should roll back the batch. The `@transaction.atomic` decorator protects against *unexpected* failures (e.g., a database constraint violation from a bug), ensuring the database is never left in a half-imported state.
-]]>
